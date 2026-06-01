@@ -1,0 +1,66 @@
+# Python virtual environment directories
+sentiment_project_env/
+env/
+.venv/
+
+# Byte-code files
+*.pyc
+__pycache__/
+
+# Editor/IDE specific files (add common ones you use)
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp # vim swap files
+*.bak # backup files
+
+# Operating System specific files
+.DS_Store # macOS
+Thumbs.db # Windows thumbnail cache
+Desktop.ini # Windows folder customization
+
+# Jupyter Notebook specific files
+.ipynb_checkpoints/
+*.ipynb_checkpoints/ # for subdirectories if any
+
+# Compiled files
+*.exe
+*.dll
+*.so
+*.o
+*.a
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# Large data files (VERY IMPORTANT for your project to keep repo small)
+# It's best practice to NOT commit large data files directly to Git.
+# Specify specific filenames or entire directories
+data/
+# If you have subfolders for raw and processed data, you might ignore them:
+# raw_data/
+# processed_data/
+# Or specific file types:
+ *.csv
+# *.json
+# *.parquet
+
+# Configuration files with sensitive information (e.g., API keys, passwords)
+# Always ensure these are NOT committed!
+.env # Common for environment variables
+config.ini
+credentials.json
+api_keys.py
+*.apikey
+
+# Backtesting results, generated plots, or temporary output
+results/
+plots/
+generated_reports/
+*.png
+*.jpg
+*.html # if generated as part of a report
