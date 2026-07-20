@@ -61,6 +61,12 @@ api_keys.py
 results/
 plots/
 generated_reports/
+# Ignore images globally except those used in the README
 *.png
 *.jpg
+
+!images/
+!images/*.png
+!images/*.jpg
+
 *.html # if generated as part of a report
