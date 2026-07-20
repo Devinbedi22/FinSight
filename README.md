@@ -44,3 +44,59 @@ The strategy was rigorously backtested using **Python** for a historical period 
 * **Alternative Data:** Incorporate other alternative data sources (e.g., social media sentiment, satellite imagery, supply chain data).
 
 ---
+
+## Key Results
+
+The table below summarizes the core results computed from `returns.csv`.
+
+| Metric | Value |
+|---|---:|
+| Number of companies evaluated | 16 |
+| Average CAGR (strategy) | 27.96% |
+| Average CAGR (buy & hold) | 27.05% |
+| Average improvement (strategy − buy & hold) | 0.91 percentage points |
+| Best performing company (strategy CAGR) | NFLX (54.57%) |
+| Largest improvement over buy-and-hold | AXP (+4.14 percentage points) |
+| Companies where strategy outperformed buy & hold | 12 of 16 |
+| Worst relative performance (largest negative improvement) | NVDA (−3.50 percentage points) |
+
+## Results
+
+Below are the key visual results from the backtest and analysis. Each figure is saved in the `images/` folder at publication quality (PNG, dpi=300).
+
+### CAGR Comparison
+
+![CAGR Comparison](images/cagr_comparison.png)
+
+Figure: Comparison of CAGR achieved by the sentiment-based strategy versus a buy-and-hold baseline for each evaluated company. The grouped bar chart shows both series side-by-side to make per-company comparisons straightforward.
+
+### Strategy Improvement
+
+![Strategy Improvement](images/strategy_improvement.png)
+
+Figure: Improvement (strategy CAGR − buy & hold CAGR) for each company. Positive values indicate the sentiment-based strategy outperformed the buy-and-hold baseline; negative values indicate underperformance.
+
+### Average CAGR
+
+![Average CAGR](images/average_cagr.png)
+
+Figure: Average CAGR across all evaluated companies for the sentiment-based strategy versus buy-and-hold. This summarizes portfolio-level performance differences.
+
+### Company Ranking
+
+![Company Ranking by Improvement](images/improvement_rank.png)
+
+Figure: Companies ranked by their improvement over the buy-and-hold baseline (highest to lowest). This highlights which tickers gained the most from the strategy and which lagged behind.
+
+---
+
+Notes
+- All figures are generated automatically by `generate_figures.py` and saved to the `images/` folder.
+- The repository avoids changing any calculation or strategy logic; visualizations and documentation are presentation-only enhancements for portfolio quality.
+
+Reproduce the figures locally:
+
+```bash
+python generate_figures.py
+```
+
