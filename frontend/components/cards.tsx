@@ -1,0 +1,96 @@
+import Link from "next/link";
+import type { DemoNewsItem, Decision } from "@/lib/demo-data";
+import { DecisionBadge, Icon, SentimentBadge, StatusBadge } from "@/components/ui";
+
+export function NewsCard({ item }: { item: DemoNewsItem }) {
+  const severityTone = item.severity === "High" ? "red" : item.severity === "Medium" ? "amber" : "muted";
+  return (
+    <article className="group border-b border-[#222a32] px-5 py-4 last:border-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href={`/companies/${item.ticker}`} className="text-[11px] font-bold tracking-wide text-[#bdcbef] hover:text-white">{item.ticker}</Link>
+        <span className="text-[10px] text-[#697581]">{item.company}</span>
+        <span className="ml-auto flex items-center gap-1 text-[10px] text-[#74808c]"><Icon name="clock" size={12} />{item.time}</span>
+      </div>
+      <Link href={`/events/${item.id}`} className="mt-2 block text-[13px] font-medium leading-5 text-[#dce2e8] transition-colors group-hover:text-white">{item.headline}</Link>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <SentimentBadge sentiment={item.sentiment} />
+        <StatusBadge tone={severityTone}>{item.severity} impact</StatusBadge>
+        <span className="rounded-md border border-[#29323c] px-2 py-1 text-[10px] text-[#8e99a5]">{item.eventType}</span>
+        <span className="ml-auto text-[10px] text-[#75808c]">Novelty: {item.novelty}</span>
+      </div>
+      <div className="mt-3 flex items-center gap-1.5 text-[10px] text-[#71808d]"><Icon name="pulse" size={13} />Reaction model unavailable</div>
+    </article>
+  );
+}
+
+export function EventCard({ item }: { item: DemoNewsItem }) {
+  const tone = item.severity === "High" ? "red" : "amber";
+  return (
+    <Link href={`/events/${item.id}`} className="block rounded-lg border border-[#28313a] bg-[#11171d] p-4 transition-colors hover:border-[#3d4a57] hover:bg-[#151c23]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-[#8793a0]">{item.ticker} <span className="px-1 text-[#424d58]">/</span> {item.eventType}</p><h3 className="mt-2 text-[13px] font-medium leading-5 text-[#dfe5ea]">{item.headline}</h3></div>
+        <StatusBadge tone={tone}>{item.severity}</StatusBadge>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#252d36] pt-3">
+        <SentimentBadge sentiment={item.sentiment} />
+        <span className="text-[10px] text-[#84909c]">Novelty {item.novelty}</span>
+        <span className="ml-auto text-[10px] text-[#74808c]">Market context unavailable</span>
+      </div>
+    </Link>
+  );
+}
+
+export function CompanyCard({
+  ticker,
+  name,
+  sector,
+  sentiment,
+  events,
+  regime,
+}: {
+  ticker: string;
+  name: string;
+  sector: string;
+  sentiment: "Positive" | "Negative" | "Neutral";
+  events: number;
+  regime: string;
+}) {
+  return (
+    <Link href={`/companies/${ticker}`} className="block rounded-xl border border-[#252d36] bg-[#10151b] p-4 transition-colors hover:border-[#3c4854] hover:bg-[#141a21]">
+      <div className="flex items-start justify-between">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#303a45] bg-[#171e26] text-[10px] font-bold tracking-wide text-[#c4d1ee]">{ticker.slice(0, 2)}</span>
+        <Icon name="arrow" size={15} />
+      </div>
+      <p className="mt-4 text-sm font-semibold text-[#e3e8ed]">{ticker}</p>
+      <p className="mt-1 truncate text-xs text-[#89939f]">{name}</p>
+      <div className="mt-4 flex items-center justify-between border-t border-[#242d36] pt-3 text-[10px] text-[#81909c]"><span>{sector}</span><span>{events} events</span></div>
+      <div className="mt-3 flex flex-wrap items-center gap-2"><SentimentBadge sentiment={sentiment} /><span className="text-[10px] text-[#7f8a95]">Regime {regime}</span></div>
+      <p className="mt-3 text-[10px] text-amber-300/80">Demo directory · analysis unavailable</p>
+    </Link>
+  );
+}
+
+export function PredictionCard({
+  decision,
+  title,
+  ticker,
+  detail,
+}: {
+  decision: Decision;
+  title: string;
+  ticker: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[#29323c] bg-[#11171d] p-4">
+      <div className="flex items-center justify-between gap-2"><DecisionBadge decision={decision} /><span className="text-[10px] font-semibold text-[#bdcbef]">{ticker}</span></div>
+      <p className="mt-3 text-xs font-medium leading-5 text-[#d8dfe6]">{title}</p>
+      <p className="mt-1 text-[10px] leading-4 text-[#89939f]">{detail}</p>
+      <div className="mt-3 border-t border-[#252d36] pt-3 text-[10px] text-amber-300/80">Reaction model unavailable</div>
+    </div>
+  );
+}
+
+export function DemoNotice({ children = "Demo interface · values shown are illustrative and are not generated by the FinSight model." }: { children?: string }) {
+  return <div className="mb-5 flex items-start gap-2 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3.5 py-3 text-[11px] leading-5 text-amber-200/80"><span className="mt-0.5"><Icon name="spark" size={14} /></span><p>{children}</p></div>;
+}

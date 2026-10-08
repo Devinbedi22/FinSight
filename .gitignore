@@ -37,36 +37,40 @@ logs/
 tmp/
 temp/
 
-# Large data files (VERY IMPORTANT for your project to keep repo small)
-# It's best practice to NOT commit large data files directly to Git.
-# Specify specific filenames or entire directories
-data/
-# If you have subfolders for raw and processed data, you might ignore them:
-# raw_data/
-# processed_data/
-# Or specific file types:
- *.csv
-# *.json
-# *.parquet
+# Local/generated dataset caches only; repository research datasets remain tracked.
+/data/cache/
+/data/local/
 
 # Configuration files with sensitive information (e.g., API keys, passwords)
 # Always ensure these are NOT committed!
 .env # Common for environment variables
-config.ini
-credentials.json
-api_keys.py
 *.apikey
 
 # Backtesting results, generated plots, or temporary output
 results/
 plots/
 generated_reports/
-# Ignore images globally except those used in the README
-*.png
-*.jpg
+# Phase 1 application-local files
+.env.*
+!.env.example
+backend/.venv/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/*.egg-info/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/coverage/
+frontend/*.tsbuildinfo
 
-!images/
-!images/*.png
-!images/*.jpg
+# Hugging Face caches and locally generated ML model artifacts
+.cache/huggingface/
+**/.cache/huggingface/
+backend/app/ml/artifacts/*
+!backend/app/ml/artifacts/.gitkeep
+backend/app/ml/training/output/
+backend/app/ml/training/checkpoints/
 
-*.html # if generated as part of a report
+# Local research datasets
+/data/*.csv
