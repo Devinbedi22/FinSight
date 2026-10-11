@@ -55,6 +55,8 @@ generated_reports/
 !.env.example
 backend/.venv/
 backend/.pytest_cache/
+backend/*.db
+backend/*.db-*
 backend/.mypy_cache/
 backend/.ruff_cache/
 backend/*.egg-info/
