@@ -9,6 +9,7 @@ const primaryNav = [
   { label: "News", href: "/news", icon: "news" },
   { label: "Predictions", href: "/predictions", icon: "pulse" },
   { label: "Companies", href: "/companies", icon: "building" },
+  { label: "Backtesting", href: "/backtesting", icon: "pulse" },
 ];
 
 const pageNames: Record<string, string> = {
@@ -16,6 +17,7 @@ const pageNames: Record<string, string> = {
   news: "News",
   predictions: "Predictions",
   companies: "Companies",
+  backtesting: "Backtesting",
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {

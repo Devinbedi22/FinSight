@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { PricePredictionChart, type ForecastPoint } from "@/components/charts";
+import { PricePredictionChart, type ForecastPoint, type NewsMarker } from "@/components/charts";
 import { EmptyState, PageHeader, Panel, PanelHeading, StatCard, StatusBadge } from "@/components/ui";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
-type NewsUsed = { id: number; title: string; url: string; published_at: string; relevance_score: number | null; explicit_company_mention: boolean };
+type NewsUsed = NewsMarker & { url: string; relevance_score: number | null; explicit_company_mention: boolean };
 type Analysis = {
   ticker: string;
   company: string;
@@ -53,7 +53,15 @@ export default function CompanyDetailPage({ params }: { params: Promise<{ ticker
         <StatCard label="30-day expected return" value={prediction ? `${prediction.expected_return >= 0 ? "+" : ""}${(prediction.expected_return * 100).toFixed(2)}%` : "Unavailable"} note={prediction ? "Raw regression output from the loaded checkpoint" : analysis.status.replaceAll("_", " ")} />
         <StatCard label="Forecast price" value={prediction ? `$${prediction.forecast_price.toFixed(2)}` : "Unavailable"} note={prediction ? `Model estimate for ${prediction.horizon_days} days from ${prediction.as_of}` : "Requires price history and relevant stored news"} />
       </div>
-      <PricePredictionChart history={analysis.history} forecast={prediction ? { date: new Date(new Date(prediction.as_of).getTime() + prediction.horizon_days * 86_400_000).toISOString().slice(0, 10), price: prediction.forecast_price, expectedReturn: prediction.expected_return } : null} />
+      <PricePredictionChart
+        history={analysis.history}
+        news={analysis.news_used}
+        forecast={prediction ? {
+          date: new Date(new Date(prediction.as_of).getTime() + prediction.horizon_days * 86_400_000).toISOString().slice(0, 10),
+          price: prediction.forecast_price,
+          expectedReturn: prediction.expected_return,
+        } : null}
+      />
       <Panel className="mt-5">
         <PanelHeading title="News used by the forecast" detail={`${analysis.news_used.length} company-linked article${analysis.news_used.length === 1 ? "" : "s"} selected by the retrieval/reranking stage`} />
         {analysis.news_used.length ? <div className="divide-y divide-[#222a32]">{analysis.news_used.map((item) => <a key={item.id} href={item.url} target="_blank" rel="noreferrer" className="block px-5 py-4 hover:bg-[#131920]"><div className="flex flex-wrap items-center gap-2 text-[10px] text-[#75808c]"><time>{new Date(item.published_at).toLocaleString()}</time><span>·</span><span>{item.explicit_company_mention ? "Company named" : `Stocky relevance ${item.relevance_score?.toFixed(3) ?? "n/a"}`}</span></div><p className="mt-2 text-sm leading-6 text-[#dce2e8]">{item.title}</p></a>)}</div> : <EmptyState title="No company-linked news" description="The model needs stored headlines retrieved for this S&P 500 company before it can make a forecast." />}

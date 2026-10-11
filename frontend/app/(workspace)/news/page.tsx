@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EventIntelligenceRadar, NewsVolumeChart, SentimentDistributionChart } from "@/components/charts";
 import { EmptyState, PageHeader, Panel, SearchInput, StatusBadge } from "@/components/ui";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
@@ -9,15 +10,17 @@ const PAGE_SIZE = 30;
 
 type Candidate = { ticker: string; name: string; entity_mentioned?: boolean; security_type?: string; business_sector?: string | null; relevance_score?: number | null };
 type Impact = { ticker: string; impact?: string | null; status: string; evidence_status?: string; expected_return?: number | null; model?: string | null };
+type IngestionStatus = { enabled: boolean };
 type Article = {
   id: number;
   title: string;
   url: string;
   source: string;
   published_at: string | null;
+  sentiment?: string | null;
   ticker_candidates: Candidate[];
   impact_predictions: Impact[];
-  usefulness?: { label?: string; ticker_inference?: string; method?: string } | null;
+  usefulness?: { label?: string; score?: number | null; ticker_inference?: string; method?: string } | null;
 };
 
 export default function NewsPage() {
@@ -27,6 +30,9 @@ export default function NewsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState("");
+  const [ingestionEnabled, setIngestionEnabled] = useState<boolean | null>(null);
+  const [ingestionStatusError, setIngestionStatusError] = useState("");
+  const [expandedArticles, setExpandedArticles] = useState<Set<number>>(() => new Set());
   const sentinel = useRef<HTMLDivElement>(null);
   const nextCursor = useRef<string | null>(null);
   const requestInFlight = useRef(false);
@@ -69,6 +75,22 @@ export default function NewsPage() {
   }, [loadPage]);
 
   useEffect(() => {
+    let active = true;
+    void fetch(`${API}/news/ingestion-status`, { signal: AbortSignal.timeout(5_000) })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Ingestion status API returned ${response.status}`);
+        return response.json() as Promise<IngestionStatus>;
+      })
+      .then((status) => {
+        if (active) setIngestionEnabled(status.enabled);
+      })
+      .catch((reason: unknown) => {
+        if (active) setIngestionStatusError(reason instanceof Error ? reason.message : "Could not determine ingestion status.");
+      });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
     const node = sentinel.current;
     if (!node || !hasMore || loading || loadingMore) return;
     const observer = new IntersectionObserver((entries) => {
@@ -87,8 +109,12 @@ export default function NewsPage() {
   }), [articles, query]);
 
   return <>
-    <PageHeader eyebrow="News archive · model-scored" title="News" description="Stories are screened by a pretrained financial-relevance model. Expand one to inspect Stocky matches and FinancialBERT estimates." action={<StatusBadge tone={error ? "red" : "green"}>{error ? "API unavailable" : "Polling"}</StatusBadge>} />
+    <PageHeader eyebrow="News archive · model-scored" title="News" description="Stories are screened by a pretrained financial-relevance model. Expand one to inspect Stocky matches and FinancialBERT estimates." action={<StatusBadge tone={error ? "red" : ingestionEnabled === false ? "amber" : "green"}>{error ? "API unavailable" : ingestionEnabled === false ? "Ingestion disabled" : "Polling"}</StatusBadge>} />
     {error && <div className="mb-4 rounded-lg border border-red-900/50 bg-red-950/20 p-3 text-xs text-red-200">{error}. Start the backend at {API}.</div>}
+    <div className="mb-5 grid gap-4 xl:grid-cols-2">
+      <NewsVolumeChart articles={articles} loading={loading} error={error} />
+      <SentimentDistributionChart articles={articles} loading={loading} error={error} />
+    </div>
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
       <SearchInput placeholder="Search headlines, sources, S&P 500 tickers…" className="w-full sm:max-w-lg" value={query} onChange={setQuery} />
       <span className="text-[11px] text-[#75808c]">{filtered.length} loaded · newest first · older stories load as you scroll</span>
@@ -102,9 +128,22 @@ export default function NewsPage() {
             <time dateTime={article.published_at ?? undefined}>{article.published_at ? new Date(article.published_at).toLocaleString() : "Date unavailable"}</time>
           </div>
           <a href={`${API}/news/${article.id}/open`} target="_blank" rel="noreferrer" className="mt-2 block max-w-5xl text-[16px] font-medium leading-7 text-[#e1e7ed] hover:text-white">{article.title}<span className="ml-2 text-xs text-[#8291a1]">Open source ↗</span></a>
-          <details className="group mt-4 rounded-lg border border-[#29323c] bg-[#10151b]">
+          <details
+            className="group mt-4 rounded-lg border border-[#29323c] bg-[#10151b]"
+            onToggle={(event) => {
+              const isOpen = event.currentTarget.open;
+              setExpandedArticles((previous) => {
+                const next = new Set(previous);
+                if (isOpen) next.add(article.id);
+                else next.delete(article.id);
+                return next;
+              });
+            }}
+          >
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-xs text-[#cbd4de]"><span>{article.usefulness?.ticker_inference === "pending" ? "Model enrichment pending · view article" : `Stocky matched ${linkedCompanies.length} S&P 500 tickers · view impact estimates`}</span><span aria-hidden="true" className="text-[#8793a0] transition-transform group-open:rotate-180">⌄</span></summary>
-          <div className="border-t border-[#252e38] p-3"><p className="mb-2 text-[10px] text-[#74818e]">{article.usefulness?.ticker_inference === "pending" ? "This archived story is stored; Stocky matching and FinancialBERT impact inference will be filled by the background backfill." : "Select a ticker to open its prediction chart. Directions are FinancialBERT estimates."}</p><div className="flex flex-wrap gap-2">{linkedCompanies.map((company) => {
+          <div className="border-t border-[#252e38] p-3"><p className="mb-2 text-[10px] text-[#74818e]">{article.usefulness?.ticker_inference === "pending" ? "This archived story is stored; Stocky matching and FinancialBERT impact inference will be filled by the background backfill." : "Select a ticker to open its prediction chart. Directions are FinancialBERT estimates."}</p>
+          {expandedArticles.has(article.id) && linkedCompanies.length > 0 && <EventIntelligenceRadar usefulnessScore={article.usefulness?.score} candidates={linkedCompanies} />}
+          <div className="flex flex-wrap gap-2">{linkedCompanies.map((company) => {
             const impact = article.impact_predictions.find((item) => item.ticker === company.ticker);
             const direction = impact?.impact;
             return <Link key={company.ticker} href={`/companies/${company.ticker}`} className="inline-flex max-w-full flex-col gap-1 rounded-md border border-[#303b47] bg-[#121922] px-2.5 py-2 text-[11px] hover:border-[#7087ba]">
@@ -116,7 +155,15 @@ export default function NewsPage() {
           })}{linkedCompanies.length === 0 && <p className="px-1 py-2 text-xs text-[#8b96a3]">No S&amp;P 500 candidates for this article.</p>}</div></div>
           </details>
         </article>;
-      }) : <EmptyState title={query ? "No matching stories" : "No stories stored yet"} description={query ? "Try a different headline, source, company, or ticker." : "Automatic ingestion runs while the backend is running. New stories will appear here."} />}
+      }) : <EmptyState title={query ? "No matching stories" : "No stories stored yet"} description={query
+        ? "Try a different headline, source, company, or ticker."
+        : ingestionEnabled === false
+          ? "News ingestion is disabled in the backend. Enable NEWS_INGEST_ENABLED and restart it, or run a bounded manual ingestion request. No sample articles are substituted."
+          : ingestionEnabled === true
+            ? "News ingestion is enabled, but no stories have been stored yet. Check the backend logs for feed or processing errors."
+            : ingestionStatusError
+              ? `No stories are stored, and ingestion status is unavailable (${ingestionStatusError}). Check the backend configuration and logs.`
+              : "No stories are stored yet. Checking whether backend ingestion is enabled."} />}
       <div ref={sentinel} className="h-1" />
       {loadingMore && <p className="border-t border-[#222a32] p-4 text-center text-xs text-[#89939f]">Loading older stories…</p>}
       {!hasMore && articles.length > 0 && <p className="border-t border-[#222a32] p-4 text-center text-[11px] text-[#65717d]">End of the stories currently stored in this archive.</p>}
