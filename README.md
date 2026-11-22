@@ -51,8 +51,15 @@ Open <http://localhost:3000>; backend docs are at <http://localhost:8000/docs>. 
 - `POST /api/v1/analyze` — body: `{"headline":"...", "summary":"..."}`
 - `GET /api/v1/news?limit=30&offset=0&ticker=NVDA`
 - `GET /api/v1/news/{id}` — persisted article with ticker-level impact classes
+- `GET /api/v1/companies?search=Apple&limit=50&offset=0` — server-filtered S&P 500 company search and page
+- `GET /api/v1/companies/{ticker}/history?period=1y` — daily adjusted OHLCV for `1mo`, `3mo`, `6mo`, `1y`, `5y`, or `max`
+- `GET /api/v1/companies/{ticker}/fundamentals?as_of=YYYY-MM-DD` — SEC CompanyFacts filtered to facts available by the requested date, with per-metric filing periods and provenance
 - `GET /api/v1/companies/{ticker}/prediction` — observed daily closes, retrieved recent headlines, and FinancialBERT expected return/forecast price
 - `POST /api/v1/news/ingest` — body: `{"limit":25}`
+
+## Fundamentals and data limitations
+
+Company financial statements are read from the free SEC EDGAR CompanyFacts API. Set `SEC_USER_AGENT` in `backend/.env` to an application name and a monitored contact email before requesting fundamentals; replace the example value in `.env.example`. SEC facts reflect reported filings and may omit or use company-specific tags for some metrics. Unavailable metrics remain empty. Revenue, EPS, cash flow, and other values include their reported period and filing date. P/E and market capitalization are calculated only when both SEC facts and a latest available Yahoo Finance daily price are present. Yahoo Finance access through yfinance is unofficial, can fail or be rate limited, and is intended for personal use under yfinance's published guidance; it is not real-time market data.
 
 ## Research limitations
 

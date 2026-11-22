@@ -39,7 +39,7 @@ export default function BacktestingPage() {
             title="No verified backtest results"
             description="The repository contains aggregate CAGR values in a legacy CSV, but no valid equity or drawdown time series. No returns, trades, Sharpe ratio, or win rate are shown here."
           />
-          <p className="mx-auto max-w-2xl border-t border-[#252d36] pt-4 text-center text-[10px] leading-5 text-[#89939f]">
+          <p className="mx-auto max-w-2xl border-t border-[var(--line-soft)] pt-4 text-center text-[10px] leading-5 text-[var(--muted)]">
             The aggregate CSV is an offline research artifact, not a live API result. A look-ahead issue in the notebook must be corrected and the experiment rerun with reproducible inputs before performance charts are appropriate.
           </p>
         </div>
@@ -50,13 +50,13 @@ export default function BacktestingPage() {
           title="Legacy methodology and limitations"
           detail="Based on main.ipynb, returns.csv, and the checked-in research scripts"
         />
-        <div className="grid gap-px bg-[#252d36] sm:grid-cols-2">
+        <div className="grid gap-px bg-[var(--line-soft)] sm:grid-cols-2">
           {methodology.map((item, index) => (
-            <article key={item.title} className="bg-[#10151b] p-5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#91aaff]">
+            <article key={item.title} className="bg-[var(--panel)] p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--accent-strong)]">
                 0{index + 1} · {item.title}
               </p>
-              <p className="mt-2 text-xs leading-5 text-[#aab4bf]">{item.detail}</p>
+              <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{item.detail}</p>
             </article>
           ))}
         </div>

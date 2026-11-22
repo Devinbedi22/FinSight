@@ -1,6 +1,6 @@
 """News analysis, U.S.-listed universe, and ingestion endpoints."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from html import unescape
 import logging
 import re
@@ -20,8 +20,11 @@ from app.services.news import analyze_headline, ingest_latest, review_stored_art
 from app.ml.financialbert import predict_expected_return
 from app.ml.financial_relevance import financial_relevance_status
 from app.services.news import rerank_company_news
-from app.services.universe import get_sp500_universe, get_us_listed_universe
-from app.services.market import get_company_market_row, get_company_market_rows, get_company_price_history
+from app.services.sentiment import enqueue_sentiment
+from app.services.universe import get_sp500_universe, get_sp500_universe_metadata, get_us_listed_universe
+from app.services.market import get_company_market_row, get_company_market_rows, get_company_price_history, get_company_price_on_or_before
+from app.services.market_context import get_company_event_study, get_company_market_context
+from app.services.fundamentals import FundamentalsProviderError, get_company_fundamentals
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -48,9 +51,15 @@ class NewsOut(BaseModel):
     sentiment: str | None = None
     sentiment_score: float | None = None
     sentiment_scores: dict[str, float] | None = None
+    sentiment_status: str = "not_processed"
+    sentiment_model: str | None = None
+    sentiment_model_version: str | None = None
+    sentiment_inferred_at: datetime | None = None
+    sentiment_error: str | None = None
     ticker_candidates: list[dict]
     impact_predictions: list[dict] = Field(default_factory=list)
     usefulness: dict | None = None
+    financial_events: list[dict] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 
@@ -61,6 +70,29 @@ def get_news_article(article_id: int, session: Session = Depends(get_db)) -> New
     if article is None:
         raise HTTPException(status_code=404, detail="Stored news article not found")
     return review_stored_article(article, refresh_usefulness=False)
+
+
+@router.post("/news/{article_id:int}/sentiment/retry")
+def retry_news_sentiment(article_id: int, session: Session = Depends(get_db)) -> dict:
+    """Requeue one failed sentiment job without changing its article or ticker analysis."""
+    article = session.get(NewsArticle, article_id)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Stored news article not found")
+    if article.sentiment_status not in {"model_unavailable", "inference_failed"}:
+        raise HTTPException(
+            status_code=409,
+            detail="Only articles with unavailable or failed sentiment can be retried.",
+        )
+    article.sentiment_status = "not_processed"
+    article.sentiment_error = None
+    session.commit()
+    queued = enqueue_sentiment([article.id])
+    return {
+        "article_id": article.id,
+        "sentiment_status": "not_processed",
+        "queued": bool(queued),
+        "message": "Retry queued." if queued else "Retry remains pending and will be picked up by the background sweep.",
+    }
 
 
 @router.get("/news/{article_id}/open", include_in_schema=False)
@@ -95,14 +127,21 @@ def sp500_universe() -> dict:
         companies = get_sp500_universe()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not refresh S&P 500 universe: {exc}") from exc
-    return {"count": len(companies), "constituents": companies}
+    return {"count": len(companies), "constituents": companies, "directory": get_sp500_universe_metadata()}
 
 
 @router.get("/companies")
-def companies(limit: int = Query(default=100, ge=1, le=500), offset: int = Query(default=0, ge=0)) -> dict:
+def companies(
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    search: str | None = Query(default=None, max_length=100),
+    include_quotes: bool = True,
+) -> dict:
     """Real S&P 500 constituents with latest available Yahoo Finance quote data."""
     try:
-        return get_company_market_rows(limit=limit, offset=offset)
+        if include_quotes:
+            return get_company_market_rows(limit=limit, offset=offset, search=search)
+        return get_company_market_rows(limit=limit, offset=offset, search=search, include_quotes=False)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Company/market data unavailable: {exc}") from exc
 
@@ -118,6 +157,126 @@ def company(ticker: str) -> dict:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Company quote unavailable: {exc}") from exc
+
+
+@router.get("/companies/{ticker}/history")
+def company_history(
+    ticker: str,
+    period: str = Query(default="1y", pattern="^(1mo|3mo|6mo|1y|5y|max)$"),
+) -> dict:
+    try:
+        ticker = ticker.upper()
+        if not any(row["ticker"].upper() == ticker for row in get_sp500_universe()):
+            raise HTTPException(status_code=404, detail="Ticker is not an S&P 500 constituent")
+        points = get_company_price_history(ticker, period=period)
+        return {
+            "ticker": ticker,
+            "period": period,
+            "points": points,
+            "count": len(points),
+            "source": "Yahoo Finance via yfinance (delayed/unofficial; adjusted daily OHLCV)",
+            "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            "status": "available" if points else "unavailable",
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Price history unavailable: {exc}") from exc
+
+
+@router.get("/companies/{ticker}/fundamentals")
+def company_fundamentals(ticker: str, as_of: date | None = None) -> dict:
+    try:
+        ticker = ticker.upper()
+        if not any(row["ticker"].upper() == ticker for row in get_sp500_universe()):
+            raise HTTPException(status_code=404, detail="Ticker is not an S&P 500 constituent")
+        sec_user_agent = get_settings().sec_user_agent
+        if not sec_user_agent or "@" not in sec_user_agent:
+            raise FundamentalsProviderError(
+                "Set SEC_USER_AGENT to an application name and monitored contact email before requesting SEC data."
+            )
+        latest_price = None
+        quote_time = None
+        try:
+            if as_of:
+                latest_price, quote_time = get_company_price_on_or_before(ticker, as_of)
+            else:
+                market_row = get_company_market_row(ticker)
+                if market_row:
+                    latest_price = market_row.get("price")
+                    quote_time = market_row.get("quote_time")
+        except Exception:
+            logger.info("Quote unavailable while deriving SEC ratios ticker=%s", ticker, exc_info=True)
+        result = get_company_fundamentals(
+            ticker,
+            latest_price=latest_price,
+            latest_price_as_of=quote_time,
+            as_of_date=as_of,
+        )
+        result["market_price"] = latest_price
+        result["market_price_as_of"] = quote_time
+        return result
+    except HTTPException:
+        raise
+    except FundamentalsProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Company fundamentals unavailable ticker=%s", ticker)
+        raise HTTPException(status_code=502, detail="SEC fundamentals are temporarily unavailable.") from exc
+
+
+@router.get("/companies/{ticker}/market-context")
+def company_market_context(ticker: str, as_of: date | None = None) -> dict:
+    """Return adjusted-price technical and benchmark context through an optional cutoff date."""
+    try:
+        return get_company_market_context(ticker.upper(), as_of=as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Company market context unavailable ticker=%s", ticker)
+        raise HTTPException(status_code=502, detail="Market context is temporarily unavailable.") from exc
+
+
+@router.get("/companies/{ticker}/event-study")
+def company_event_study(ticker: str, as_of: date | None = None, session: Session = Depends(get_db)) -> dict:
+    """Compare persisted company news events with later adjusted-price returns."""
+    symbol = ticker.upper()
+    try:
+        if not any(row["ticker"].upper() == symbol for row in get_sp500_universe()):
+            raise HTTPException(status_code=404, detail="Ticker is not an S&P 500 constituent")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Company directory unavailable for event study ticker=%s", symbol)
+        raise HTTPException(status_code=502, detail="Company directory is temporarily unavailable.") from exc
+    cutoff = as_of or date.today()
+    articles = session.scalars(
+        select(NewsArticle)
+        .where(NewsArticle.published_at.is_not(None))
+        .where(NewsArticle.published_at < datetime.combine(cutoff, datetime.max.time(), tzinfo=timezone.utc))
+        .order_by(desc(NewsArticle.published_at))
+        .limit(500)
+    )
+    events = []
+    for article in articles:
+        candidate = next((item for item in (article.ticker_candidates or []) if item.get("ticker", "").upper() == symbol), None)
+        if not candidate:
+            continue
+        for event in article.financial_events or []:
+            if event.get("related_companies") and not any(item.get("ticker", "").upper() == symbol for item in event["related_companies"]):
+                continue
+            events.append({
+                "article_id": article.id, "title": article.title,
+                "event_type": event.get("event_type"), "published_at": article.published_at.isoformat(),
+                "source": article.source,
+            })
+    try:
+        result = get_company_event_study(symbol, events, as_of=cutoff)
+        result["ticker"] = symbol
+        return result
+    except Exception as exc:
+        logger.exception("Company event study unavailable ticker=%s", symbol)
+        raise HTTPException(status_code=502, detail="News/price event study is temporarily unavailable.") from exc
 
 
 @router.get("/companies/{ticker}/prediction")
@@ -227,6 +386,49 @@ def us_listed_universe(refresh: bool = Query(default=False)) -> dict:
         "filters": {"nasdaq_traded": "Y", "test_issue": "N", "etf": "N"},
         "retrieved_at": retrieved_at,
         "securities": securities,
+    }
+
+
+@router.get("/events")
+def list_financial_events(
+    limit: int = Query(default=100, ge=1, le=250),
+    ticker: str | None = Query(default=None, min_length=1, max_length=16, pattern="^[A-Za-z0-9.\\-]+$"),
+    session: Session = Depends(get_db),
+) -> dict:
+    """List stored headline-pattern event signals with article provenance."""
+    query = select(NewsArticle).order_by(desc(NewsArticle.published_at), desc(NewsArticle.ingested_at))
+    # Keep DB work bounded; some stored rows have no event signals.
+    rows = session.scalars(query.limit(min(1000, max(200, limit * 8)))).all()
+    symbol = ticker.upper() if ticker else None
+    events = []
+    for article in rows:
+        for event in article.financial_events or []:
+            related = event.get("related_companies") or []
+            if symbol and not any(str(company.get("ticker", "")).upper() == symbol for company in related):
+                continue
+            events.append({
+                "event_type": event.get("event_type"),
+                "related_companies": related,
+                "supporting_article_id": article.id,
+                "title": article.title,
+                "source": article.source,
+                "source_url": article.url,
+                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "extraction_method": event.get("extraction_method", "unknown"),
+                "supporting_evidence": event.get("supporting_evidence", article.title),
+                "classification_status": "heuristic_headline_signal",
+                "novelty_status": "not_available",
+            })
+            if len(events) >= limit:
+                break
+        if len(events) >= limit:
+            break
+    return {
+        "count": len(events),
+        "events": events,
+        "source": "Persisted FinSight news articles",
+        "method": "financial_headline_patterns_v1",
+        "methodology_note": "Explainable title-pattern matches; not human-verified event extraction. Novelty scoring is unavailable.",
     }
 
 

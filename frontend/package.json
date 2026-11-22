@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:watchlist": "node --test lib/watchlist.test.mjs"
   },
   "dependencies": {
     "next": "16.4.0",

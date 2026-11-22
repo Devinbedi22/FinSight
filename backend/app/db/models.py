@@ -27,9 +27,16 @@ class NewsArticle(Base):
     sentiment: Mapped[str | None] = mapped_column(String(16), nullable=True)
     sentiment_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     sentiment_scores: Mapped[dict | None] = mapped_column(_JSON, nullable=True)
+    sentiment_status: Mapped[str] = mapped_column(String(24), nullable=False, default="not_processed")
+    sentiment_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sentiment_model_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sentiment_inferred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    sentiment_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     ticker_candidates: Mapped[list] = mapped_column(_JSON, nullable=False)
     impact_predictions: Mapped[list] = mapped_column(_JSON, nullable=False, default=list)
     usefulness: Mapped[dict | None] = mapped_column(_JSON, nullable=True)
+    canonical_url: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+    financial_events: Mapped[list] = mapped_column(_JSON, nullable=False, default=list)
 
 
 class IngestionState(Base):

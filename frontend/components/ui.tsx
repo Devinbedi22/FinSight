@@ -16,6 +16,9 @@ export function Icon({ name, size = 18 }: { name: string; size?: number }) {
   };
   const paths: Record<string, ReactNode> = {
     grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+    compare: <><path d="M4 19V5m0 0-2 2m2-2 2 2M10 19V9m0 0-2 2m2-2 2 2M16 19V3m0 0-2 2m2-2 2 2M22 19H2" /></>,
+    chart: <><path d="M3 20h18M5 17V9m5 8V4m5 13v-6m5 6V7" /><path d="m4 7 5-3 5 4 6-3" /></>,
+    layers: <><path d="m12 3 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5M3 16l9 5 9-5" /></>,
     news: <><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H20v15H5.5A1.5 1.5 0 0 1 4 17.5z" /><path d="M4 17.5V7m5 1h7m-7 4h7m-7 4h4" /></>,
     building: <><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M8 7h2m4 0h2M8 11h2m4 0h2M8 15h2m4 0h2M10 21v-3h4v3" /></>,
     spark: <><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z" /><path d="m19 16 .8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z" /></>,
@@ -46,7 +49,7 @@ export function Panel({
   children: ReactNode;
   className?: string;
 }) {
-  return <section className={`rounded-xl border border-[#252d36] bg-[#10151b] ${className}`}>{children}</section>;
+  return <section className={`rounded-2xl border border-line-soft bg-panel shadow-[0_16px_40px_rgba(15,11,29,0.14)] ${className}`}>{children}</section>;
 }
 
 export function PanelHeading({
@@ -59,10 +62,10 @@ export function PanelHeading({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-[#252d36] px-5 py-4">
+    <div className="flex items-start justify-between gap-4 border-b border-line-soft px-5 py-4 sm:px-6">
       <div>
-        <h2 className="text-sm font-semibold text-[#e8edf2]">{title}</h2>
-        {detail && <p className="mt-1 text-xs text-[#89939f]">{detail}</p>}
+        <h2 className="text-[13px] font-semibold tracking-[-0.01em] text-text">{title}</h2>
+        {detail && <p className="mt-1 text-[11px] leading-5 text-muted">{detail}</p>}
       </div>
       {action}
     </div>
@@ -81,11 +84,11 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+    <div className="mb-7 flex flex-col justify-between gap-4 sm:mb-8 sm:flex-row sm:items-end">
       <div>
-        {eyebrow && <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.15em] text-[#89939f]">{eyebrow}</p>}
-        <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-[28px]">{title}</h1>
-        {description && <p className="mt-2 max-w-2xl text-sm leading-6 text-[#89939f]">{description}</p>}
+        {eyebrow && <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.19em] text-accent">{eyebrow}</p>}
+        <h1 className="text-[27px] font-semibold tracking-[-0.04em] text-text sm:text-[32px]">{title}</h1>
+        {description && <p className="mt-2 max-w-3xl text-[13px] leading-6 text-muted">{description}</p>}
       </div>
       {action}
     </div>
@@ -100,13 +103,13 @@ export function StatusBadge({
   tone?: "muted" | "green" | "red" | "amber" | "blue";
 }) {
   const tones = {
-    muted: "border-[#37414c] bg-[#1a2027] text-[#bac3cc]",
-    green: "border-emerald-900/70 bg-emerald-950/50 text-emerald-300",
-    red: "border-rose-900/70 bg-rose-950/50 text-rose-300",
-    amber: "border-amber-900/70 bg-amber-950/40 text-amber-300",
-    blue: "border-blue-900/70 bg-blue-950/40 text-blue-300",
+    muted: "border-line bg-panel-soft text-muted",
+    green: "border-positive/30 bg-positive/10 text-positive",
+    red: "border-negative/30 bg-negative/10 text-negative",
+    amber: "border-warning/30 bg-warning/10 text-warning",
+    blue: "border-accent/30 bg-accent/10 text-accent-strong",
   };
-  return <span className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${tones[tone]}`}>{children}</span>;
+  return <span className={`inline-flex min-h-6 items-center gap-1.5 rounded-md border px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.09em] ${tones[tone]}`}>{children}</span>;
 }
 
 export function SentimentBadge({ sentiment }: { sentiment: Sentiment }) {
@@ -131,13 +134,13 @@ export function StatCard({
   icon?: string;
 }) {
   return (
-    <div className="rounded-xl border border-[#252d36] bg-[#10151b] p-4">
+    <div className="rounded-2xl border border-line-soft bg-panel p-4 sm:p-5">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-[#89939f]">{label}</p>
-        {icon && <span className="text-[#6d7885]"><Icon name={icon} size={16} /></span>}
+        <p className="text-xs font-medium text-[var(--muted)]">{label}</p>
+        {icon && <span className="text-[var(--subtle)]"><Icon name={icon} size={16} /></span>}
       </div>
-      <p className="mt-4 text-[22px] font-semibold tracking-tight text-[#e8edf2]">{value}</p>
-      <p className="mt-1.5 text-[11px] text-[#74808c]">{note}</p>
+      <p className="mt-4 text-[22px] font-semibold tracking-tight text-[var(--text)]">{value}</p>
+      <p className="mt-1.5 text-[11px] text-[var(--subtle)]">{note}</p>
     </div>
   );
 }
@@ -153,18 +156,18 @@ export function EmptyState({
 }) {
   return (
     <div className="flex min-h-52 flex-col items-center justify-center px-6 py-10 text-center">
-      <span className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-[#303a45] bg-[#171d24] text-[#9aa6b3]">
+      <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl border border-accent/25 bg-accent/10 text-accent-strong">
         <Icon name="pulse" size={19} />
       </span>
-      <h3 className="text-sm font-semibold text-[#e2e7ec]">{title}</h3>
-      <p className="mt-2 max-w-sm text-xs leading-5 text-[#89939f]">{description}</p>
+      <h3 className="text-sm font-semibold text-text">{title}</h3>
+      <p className="mt-2 max-w-sm text-xs leading-5 text-muted">{description}</p>
       {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
 
 export function LoadingState({ label = "Loading analysis" }: { label?: string }) {
-  return <div className="flex items-center gap-3 px-5 py-7 text-xs text-[#89939f]" role="status"><span className="h-4 w-4 animate-pulse rounded-full bg-[#364357]" />{label}</div>;
+  return <div className="space-y-4 px-5 py-7" role="status" aria-label={label}><span className="sr-only">{label}</span><div className="skeleton h-4 w-2/5 rounded-md" /><div className="skeleton h-3 w-4/5 rounded-md" /><div className="skeleton h-3 w-3/5 rounded-md" /></div>;
 }
 
 export function SearchInput({
@@ -172,16 +175,18 @@ export function SearchInput({
   className = "",
   value,
   onChange,
+  ariaLabel,
 }: {
   placeholder?: string;
   className?: string;
   value?: string;
   onChange?: (value: string) => void;
+  ariaLabel?: string;
 }) {
   return (
-    <label className={`flex min-w-0 items-center gap-2.5 rounded-lg border border-[#29323c] bg-[#0c1116] px-3 py-2.5 text-[#7e8995] focus-within:border-[#6079b5] ${className}`}>
+    <label className={`flex min-w-0 items-center gap-2.5 rounded-xl border border-line bg-panel-soft px-3.5 py-3 text-subtle transition-colors focus-within:border-accent ${className}`}>
       <Icon name="search" size={16} />
-      <input value={value} onChange={(event) => onChange?.(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs text-[#e8edf2] placeholder:text-[#68737f] focus:outline-none" placeholder={placeholder} />
+      <input aria-label={ariaLabel} value={value} onChange={(event) => onChange?.(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-text placeholder:text-subtle focus:outline-none" placeholder={placeholder} />
     </label>
   );
 }
@@ -200,11 +205,11 @@ export function FilterSelect({
   return (
     <label className="relative">
       <span className="sr-only">{label}</span>
-      <select defaultValue={label} className="appearance-none rounded-lg border border-[#29323c] bg-[#10151b] py-2.5 pl-3 pr-8 text-xs text-[#b8c1ca]">
+      <select defaultValue={label} className="appearance-none rounded-xl border border-line bg-panel-soft py-2.5 pl-3 pr-8 text-xs text-text-soft">
         <option value={label}>{label}</option>
         {options.map((option) => <option key={option}>{option}</option>)}
       </select>
-      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#75808c]"><Icon name="chevron" size={12} /></span>
+      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--subtle)]"><Icon name="chevron" size={12} /></span>
     </label>
   );
 }
@@ -218,11 +223,11 @@ export function Button({
   variant?: "primary" | "secondary" | "ghost";
 }) {
   const styles = {
-    primary: "border border-[#a8bbff] bg-[#9cb2ff] text-[#101827] hover:bg-[#b1c2ff]",
-    secondary: "border border-[#303a45] bg-[#171d24] text-[#d3dbe3] hover:bg-[#202832]",
-    ghost: "border border-transparent bg-transparent text-[#9aa5b0] hover:bg-[#1a2027] hover:text-white",
+    primary: "border border-accent/70 bg-accent text-[#241f32] shadow-[0_6px_18px_rgba(163,148,212,0.14)] hover:bg-accent-strong",
+    secondary: "border border-line bg-panel-raised text-text-soft hover:border-accent/50 hover:bg-panel",
+    ghost: "border border-transparent bg-transparent text-muted hover:bg-panel-raised hover:text-text",
   };
-  return <button className={`inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2.5 text-xs font-semibold transition-colors ${styles[variant]} ${className}`} {...props}>{children}</button>;
+  return <button className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition-[background,border,color,transform] duration-150 active:scale-[0.985] focus-ring disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`} {...props}>{children}</button>;
 }
 
 export function DataTable({
@@ -235,17 +240,17 @@ export function DataTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[720px] border-collapse text-left">
-        <thead><tr className="border-b border-[#252d36] bg-[#121820]">{headers.map((header) => <th key={header} className="px-5 py-3 text-[10px] font-semibold uppercase tracking-wider text-[#75808c]">{header}</th>)}</tr></thead>
-        <tbody className="divide-y divide-[#202830]">{children}</tbody>
+        <thead><tr className="border-b border-line bg-panel-soft">{headers.map((header) => <th key={header} className="px-5 py-3 text-[9px] font-semibold uppercase tracking-[0.14em] text-subtle">{header}</th>)}</tr></thead>
+        <tbody className="divide-y divide-line-soft">{children}</tbody>
       </table>
     </div>
   );
 }
 
 export function CompanyLink({ ticker, children }: { ticker: string; children: ReactNode }) {
-  return <Link href={`/companies/${ticker}`} className="font-medium text-[#e0e6ec] transition-colors hover:text-[#a9bcff]">{children}</Link>;
+  return <Link href={`/companies/${ticker}`} className="font-medium text-text-soft transition-colors hover:text-accent-strong">{children}</Link>;
 }
 
 export function MutedText({ children }: { children: ReactNode }) {
-  return <span className="text-xs text-[#89939f]">{children}</span>;
+  return <span className="text-xs text-muted">{children}</span>;
 }

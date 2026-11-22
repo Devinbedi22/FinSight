@@ -14,7 +14,8 @@ from app.api.v1.router import router as v1_router
 from app.core.config import get_settings
 from app.db.session import get_engine
 from app.db.models import NewsArticle
-from app.services.news import backfill_missing_impacts, bootstrap_news_archive, ingest_latest, refresh_stored_usefulness
+from app.services.news import backfill_canonical_news_urls, backfill_missing_impacts, bootstrap_news_archive, ingest_latest, refresh_stored_usefulness
+from app.services.sentiment import process_pending_sentiment
 
 settings = get_settings()
 scheduler = BackgroundScheduler(daemon=True)
@@ -36,10 +37,12 @@ def _scheduled_ingest() -> None:
                 archive_result = bootstrap_news_archive(session)
             relevance_backfilled = refresh_stored_usefulness(session, limit=25)
             backfilled = backfill_missing_impacts(session, limit=50)
+            canonicalized = backfill_canonical_news_urls(session, limit=250)
             result = ingest_latest(session, limit=limit)
+            sentiment_queued = process_pending_sentiment(session, limit=20)
         logger.info(
-            "Scheduled news ingestion complete: archive=%s fetched=%d created=%d skipped=%d backfilled_relevance=%d backfilled_impacts=%d",
-            archive_result, result["fetched"], result["created"], result["skipped"], relevance_backfilled, backfilled,
+            "Scheduled news ingestion complete: archive=%s fetched=%d created=%d skipped=%d backfilled_relevance=%d backfilled_impacts=%d canonicalized=%d sentiment_queued=%d",
+            archive_result, result["fetched"], result["created"], result["skipped"], relevance_backfilled, backfilled, canonicalized, sentiment_queued,
         )
     except Exception:
         logger.exception("Scheduled news ingestion failed")

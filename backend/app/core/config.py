@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 
@@ -19,6 +20,12 @@ class Settings(BaseSettings):
     financialbert_weights_path: str = "app/ml/artifacts/financialbert/model_regressor_weight_v2.pth"
     impact_context_limit: int = 5
     financialbert_news_top_k: int = 5
+    sec_user_agent: str | None = None
+    research_llm_provider: str = "none"
+    research_llm_base_url: str = "https://api.openai.com/v1"
+    research_llm_model: str | None = None
+    research_llm_api_key: SecretStr | None = None
+    research_llm_timeout_seconds: float = 25.0
     cohere_api_key: str | None = None
     cohere_rerank_model: str = "rerank-english-v3.0"
     impact_neutral_band: float = 0.002

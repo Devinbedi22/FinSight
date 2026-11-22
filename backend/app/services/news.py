@@ -7,6 +7,7 @@ import re
 import logging
 from functools import lru_cache
 from threading import Lock
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import feedparser
 import httpx
@@ -20,6 +21,7 @@ from app.ml.financialbert import classify_impact
 from app.ml.financial_relevance import score_financial_relevance
 from app.ml.stocky import retrieve_tickers
 from app.services.universe import get_sp500_universe, get_us_listed_universe
+from app.services.sentiment import enqueue_sentiment
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,7 @@ _LEGAL_SUFFIXES = re.compile(
     re.IGNORECASE,
 )
 _ingestion_lock = Lock()
+_stocky_retrieval_unavailable = False
 _NEGATIVE_MOVE = re.compile(
     r"\b(?:fell|falls|fall|dropped|drops|drop|sank|sink|slid|slides|slumps?|tumbles?|"
     r"plunges?|declines?|lower|down|lost|loses|hammered|hammers|slammed|slams|selloff)\b",
@@ -55,12 +58,20 @@ _TICKER_CONTEXT = re.compile(
 _GENERIC_NAME_WORDS = {
     "american", "first", "general", "national", "international", "united", "global", "news",
 }
+_AMBIGUOUS_COMPANY_ALIASES = {"apple", "target", "gap", "block", "shell", "match", "toast"}
+_COMPANY_REFERENCE_CONTEXT = re.compile(
+    r"\b(?:shares?|stocks?|ticker|earnings|revenues?|quarter(?:ly)?|q[1-4]|fiscal|guidance|"
+    r"dividend|acquisition|merger|reported|reports?|results?|announced?|CEO|CFO|Nasdaq|NYSE|market cap)\b",
+    re.IGNORECASE,
+)
 
 
 def _name_aliases(security_name: str) -> tuple[str, ...]:
     name = _SECURITY_SUFFIXES.sub("", security_name).strip(" ,.-")
     aliases = {name} if len(name) >= 4 else set()
     shorter = _LEGAL_SUFFIXES.sub("", name).strip(" ,.-")
+    shorter = re.sub(r"^the\s+", "", shorter, flags=re.IGNORECASE)
+    shorter = re.sub(r"\s+(?:and|&)\s*$", "", shorter, flags=re.IGNORECASE).strip(" ,.-")
     if len(shorter) >= 4 and shorter.casefold() not in _GENERIC_NAME_WORDS:
         aliases.add(shorter)
         first_word = re.split(r"\s+", shorter, maxsplit=1)[0].strip(" ,.-")
@@ -76,9 +87,21 @@ def _alias_pattern(alias: str) -> re.Pattern:
     return re.compile(rf"(?<!\w){re.escape(alias)}(?!\w)", re.IGNORECASE)
 
 
+def _company_name_alias_is_supported(text: str, alias: str) -> bool:
+    """Require issuer-specific context for common words used as company names."""
+    pattern = _alias_pattern(alias)
+    for match in pattern.finditer(text):
+        if alias.casefold() not in _AMBIGUOUS_COMPANY_ALIASES:
+            return True
+        window = text[max(0, match.start() - 90):match.end() + 90]
+        if _COMPANY_REFERENCE_CONTEXT.search(window):
+            return True
+    return False
+
+
 def _company_is_mentioned(text: str, ticker: str, security_name: str) -> bool:
     """Match a full security/company name or an unambiguous uppercase ticker token."""
-    if any(_alias_pattern(alias).search(text) for alias in _name_aliases(security_name)):
+    if any(_company_name_alias_is_supported(text, alias) for alias in _name_aliases(security_name)):
         return True
     # Short symbols (CL, T, V, etc.) collide with ordinary words and commodities.
     # For 3-letter symbols such as ICE, require finance context or `$TICKER`.
@@ -148,7 +171,10 @@ def _explicitly_named_companies(text: str, universe: list[dict[str, str]]) -> li
     mentioned: set[str] = set()
     for width in range(1, min(max_words, len(words)) + 1):
         for start in range(len(words) - width + 1):
-            mentioned.update(alias_index.get(" ".join(words[start:start + width]), ()))
+            alias = " ".join(words[start:start + width])
+            if alias in _AMBIGUOUS_COMPANY_ALIASES and not _company_name_alias_is_supported(text, alias):
+                continue
+            mentioned.update(alias_index.get(alias, ()))
     ticker_index = {
         company["ticker"]: company
         for company in universe if len(company["ticker"]) >= 3
@@ -234,7 +260,7 @@ def _classify_usefulness(text: str, explicitly_named_count: int = 0) -> dict:
     """Use a pretrained market-relevance model; issuer matches are metadata only."""
     try:
         result = score_financial_relevance(text)
-    except Exception as exc:
+    except Exception:
         logger.exception("Financial relevance model failed; refusing rule-based fallback")
         result = {
             "label": "unavailable",
@@ -250,6 +276,80 @@ def _classify_usefulness(text: str, explicitly_named_count: int = 0) -> dict:
                    "model_score_below_threshold" if result["label"] == "not_useful" else "model_unavailable"),
         "explicitly_named_company_count": explicitly_named_count,
     }
+
+
+_EVENT_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
+    ("earnings_announcement", re.compile(
+        r"\b(?:quarterly|annual|financial)\s+results\b|"
+        r"\b(?:first|second|third|fourth)[- ]quarter\s+(?:20\d{2}\s+)?results\b|"
+        r"\bq[1-4](?:\s+20\d{2})?\s+(?:earnings|results)\b|"
+        r"\b(?:quarterly|annual|q[1-4]|fourth[- ]quarter|full[- ]year)?\s*"
+        r"(?:earnings|revenue results)\b|"
+        r"\b(?:reports?|reported)\s+(?:quarterly\s+)?results\b", re.I)),
+    ("guidance", re.compile(r"\b(?:guidance|outlook|forecast)\b", re.I)),
+    ("merger_acquisition", re.compile(r"\b(?:acquir(?:e|es|ed|ing)|acquisition|merger|buyout|takeover)\b", re.I)),
+    ("regulatory_development", re.compile(r"\b(?:SEC|FTC|DOJ|FDA|antitrust|regulator\w*|regulatory|investigation|approved by the FDA)\b", re.I)),
+    ("product_launch", re.compile(
+        r"\b(?:launch(?:es|ed)?|unveil(?:s|ed)?|debut(?:s|ed)?|introduc(?:es|ed))\b"
+        r".{0,60}\b(?:product|service|platform|device|model|chip|drug|solution|system|tool)\b|"
+        r"\b(?:product|service|platform|device|model|chip|drug|solution|system|tool)\b"
+        r".{0,50}\b(?:launch(?:es|ed)?|goes live|rolls out|debut(?:s|ed)?)\b", re.I)),
+    ("management_change", re.compile(r"\b(?:CEO|CFO|chief executive|chief financial officer)\b.{0,70}\b(?:resign\w*|step\w* down|appoint\w*|name\w*|replace\w*)\b|\b(?:resign\w*|step\w* down|appoint\w*|name\w*|replace\w*)\b.{0,70}\b(?:CEO|CFO|chief executive|chief financial officer)\b", re.I)),
+    ("financial_operational_announcement", re.compile(r"\b(?:layoffs?|restructur\w*|bankrupt\w*|dividend|share buyback|stock repurchase|plant closure|workforce reduction)\b", re.I)),
+)
+
+
+def extract_financial_events(
+    title: str, ticker_candidates: list[dict] | None, article_id: int,
+    published_at: datetime | None, source: str,
+) -> list[dict]:
+    """Extract explainable title-level event signals; no model confidence is implied."""
+    records = []
+    related = [
+        {"ticker": item.get("ticker"), "name": item.get("name")}
+        for item in (ticker_candidates or []) if item.get("ticker")
+    ]
+    for event_type, pattern in _EVENT_PATTERNS:
+        match = pattern.search(title)
+        if match:
+            records.append({
+                "event_type": event_type,
+                "related_companies": related,
+                "supporting_article_id": article_id,
+                "published_at": published_at.isoformat() if published_at else None,
+                "source": source,
+                "supporting_evidence": title,
+                "extraction_method": "financial_headline_patterns_v1",
+            })
+    return records
+
+
+def canonicalize_news_url(url: str) -> str:
+    """Normalize common tracking variants while retaining publisher URL identity."""
+    parts = urlsplit(url.strip())
+    host = (parts.hostname or "").lower()
+    port = f":{parts.port}" if parts.port and parts.port not in {80, 443} else ""
+    netloc = f"{host}{port}" if host else parts.netloc.lower()
+    tracking = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "ref_src"}
+    query = urlencode(sorted(
+        (key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_") and key.lower() not in tracking
+    ))
+    path = parts.path.rstrip("/") or "/"
+    return urlunsplit((parts.scheme.lower(), netloc, path, query, ""))
+
+
+def backfill_canonical_news_urls(session: Session, limit: int = 250) -> int:
+    """Populate canonical lookup keys incrementally without rewriting original URLs."""
+    rows = list(session.scalars(
+        select(NewsArticle).where(NewsArticle.canonical_url.is_(None))
+        .order_by(NewsArticle.id.asc()).limit(max(1, min(limit, 1000)))
+    ))
+    for article in rows:
+        article.canonical_url = canonicalize_news_url(article.url)
+    if rows:
+        session.commit()
+    return len(rows)
 
 
 def _security_type(security_name: str) -> str:
@@ -283,7 +383,23 @@ def review_stored_article(article: NewsArticle, refresh_usefulness: bool = True)
         candidate["evidence_status"] = (
             "explicit_company_mention" if candidate["entity_mentioned"] else "indirect_stocky_candidate"
         )
+        candidate["relevance_evidence"] = (
+            (["stocky_ticker_retrieval"] if candidate.get("candidate_source") == "stocky" else [])
+            + (["company_name_or_contextual_ticker_match"] if candidate["entity_mentioned"]
+               else ["indirect_stocky_candidate"])
+        )
+        if candidate.get("candidate_source") == "exact_company_name":
+            candidate["relevance_method"] = "explicit_company_name_match_v1"
+        elif candidate.get("candidate_source") == "stocky":
+            candidate["relevance_method"] = "stocky_retrieval_and_company_entity_v1"
         candidate.setdefault("security_type", _security_type(candidate.get("name", "")))
+    article.ticker_candidates = [
+        candidate for candidate in article.ticker_candidates
+        if not (
+            candidate.get("candidate_source") == "exact_company_name"
+            and not candidate.get("entity_mentioned")
+        )
+    ]
     # Re-evaluate legacy rows against the current screen so newly recognized
     # market headlines aren't permanently hidden by stale classifications.
     if refresh_usefulness:
@@ -322,6 +438,7 @@ def refresh_stored_usefulness(session: Session, limit: int = 100) -> int:
 
 
 def analyze_headline(title: str, summary: str | None = None) -> dict:
+    global _stocky_retrieval_unavailable
     # The RSS summary is just a duplicate linked title plus publisher metadata;
     # use the actual headline as source text for both retrieval and evidence.
     text = title.strip()
@@ -334,7 +451,8 @@ def analyze_headline(title: str, summary: str | None = None) -> dict:
         **_classify_usefulness(text, len(named_companies)),
         "ticker_inference": "stocky-sp500-v1",
     }
-    if usefulness["label"] != "useful":
+    relevance_unavailable = usefulness["label"] == "unavailable"
+    if usefulness["label"] != "useful" and not (relevance_unavailable and named_companies):
         logger.info("Stocky retrieval skipped non-market story title=%r", title)
         return {
             "usefulness": usefulness,
@@ -345,7 +463,25 @@ def analyze_headline(title: str, summary: str | None = None) -> dict:
             "interpretation": "No stock inference was run because the story lacks a market/company signal.",
         }
     logger.info("Stocky retrieval started title=%r universe=S&P500 count=%d", title, len(sp500))
-    candidates = retrieve_tickers(title, [company["ticker"] for company in sp500])
+    stocky_available = not _stocky_retrieval_unavailable
+    if stocky_available:
+        try:
+            candidates = retrieve_tickers(title, [company["ticker"] for company in sp500])
+        except Exception:
+            # Keep ingestion durable when optional Stocky checkpoints are missing.
+            # Exact issuer mentions below remain auditable; never fabricate a
+            # relevance score or imply that the model produced these links.
+            logger.exception("Stocky ticker retrieval unavailable; using explicit issuer matches only")
+            _stocky_retrieval_unavailable = True
+            stocky_available = False
+            candidates = []
+    else:
+        candidates = []
+        logger.warning("Stocky retrieval remains unavailable for this process; using explicit issuer matches only")
+    if not stocky_available:
+        usefulness["ticker_inference"] = "explicit-name-fallback-v1"
+        usefulness["ticker_inference_status"] = "model_unavailable"
+        usefulness["ticker_inference_error"] = "Stocky retrieval unavailable; only explicit company-name matches are linked."
     names = {company["ticker"]: company for company in universe}
     for company in sp500:
         names.setdefault(company["ticker"], {
@@ -367,6 +503,18 @@ def analyze_headline(title: str, summary: str | None = None) -> dict:
     for ticker, candidate in candidate_by_ticker.items():
         company = names[ticker]
         mentioned = _company_is_mentioned(title, ticker, company["name"])
+        name_mentioned = any(
+            _alias_pattern(alias).search(title) for alias in _name_aliases(company["name"])
+        )
+        relevance_evidence = []
+        if candidate.get("candidate_source") == "stocky":
+            relevance_evidence.append("stocky_ticker_retrieval")
+        if name_mentioned:
+            relevance_evidence.append("company_name_match")
+        elif mentioned:
+            relevance_evidence.append("ticker_with_financial_context")
+        else:
+            relevance_evidence.append("indirect_stocky_candidate")
         enriched_candidates.append({
             **candidate,
             "name": company["name"],
@@ -376,6 +524,12 @@ def analyze_headline(title: str, summary: str | None = None) -> dict:
             "security_type": _security_type(company["name"]),
             "entity_mentioned": mentioned,
             "evidence_status": "explicit_company_mention" if mentioned else "indirect_stocky_candidate",
+            "relevance_evidence": relevance_evidence,
+            "relevance_method": (
+                "explicit_company_name_match_v1"
+                if candidate.get("candidate_source") == "exact_company_name" or not stocky_available
+                else "stocky_retrieval_and_company_entity_v1"
+            ),
         })
     logger.info(
         "Stocky retrieval complete title=%r candidates=%s",
@@ -389,6 +543,8 @@ def analyze_headline(title: str, summary: str | None = None) -> dict:
         "universe_count": len(sp500),
         "universe_retrieved_at": universe_retrieved_at,
         "interpretation": (
+            "Stocky retrieval was unavailable; only explicit company-name matches are linked. No model score was produced."
+            if not stocky_available else
             "Stocky ranks S&P 500 ticker candidates for each headline; FinancialBERT Model v2 estimates "
             "the direction for each candidate using company context and prior stored headlines."
         ),
@@ -525,6 +681,7 @@ def _ingest_latest(
     state.latest_attempt_at = datetime.now(timezone.utc)
     state.last_error = None
     session.flush()
+    pending_archive_day = None
     if query is None and len(queries) > 1:
         stored_day = state.archive_day if state.archive_day not in (None, "") else None
         start_index = 1
@@ -553,7 +710,7 @@ def _ingest_latest(
         else:
             queries.append(archive_query)
         day_match = re.search(r"after:(\d{4}-\d{2}-\d{2})", archive_query or "")
-        state.archive_day = day_match.group(1) if day_match else (state.archive_day or None)
+        pending_archive_day = day_match.group(1) if day_match else None
     actual_queries = len(queries)
     logger.info("News ingestion started sources=%d target_new_articles=%d archive_day=%s", actual_queries, target, state.archive_day)
     try:
@@ -577,11 +734,14 @@ def _ingest_latest(
                 if not url or not title:
                     skipped += 1
                     continue
-                if url in seen_urls:
+                canonical_url = canonicalize_news_url(url)
+                if canonical_url in seen_urls:
                     skipped += 1
                     continue
-                seen_urls.add(url)
-                existing = session.scalar(select(NewsArticle.id).where(NewsArticle.url == url))
+                seen_urls.add(canonical_url)
+                existing = session.scalar(select(NewsArticle.id).where(
+                    (NewsArticle.url == url) | (NewsArticle.canonical_url == canonical_url)
+                ))
                 if existing is not None:
                     skipped += 1
                     continue
@@ -604,6 +764,7 @@ def _ingest_latest(
                     title=title,
                     summary=summary,
                     url=url,
+                    canonical_url=canonical_url,
                     source=entry.get("source", {}).get("title", "Google News RSS"),
                     published_at=_published_at(entry),
                     sentiment=None,
@@ -621,16 +782,36 @@ def _ingest_latest(
                 if created >= target:
                     break
             if created >= target:
-                # Keep walking every archive window and count sources, but the
-                # configured write target bounds inference and DB work per run.
-                continue
+                # Stop at the requested number of new articles. Leave the
+                # archive cursor unchanged so an unscanned window is retried;
+                # canonical URL deduplication makes that retry safe.
+                break
+        if created < target and pending_archive_day:
+            # Advance the archive cursor only after all selected windows were
+            # scanned. A capped run must not skip the remainder of a window.
+            state.archive_day = pending_archive_day
         session.add_all(pending_articles)
+        session.flush()
+        for article in pending_articles:
+            if (article.usefulness or {}).get("label") == "useful" or article.ticker_candidates:
+                article.financial_events = extract_financial_events(
+                    article.title, article.ticker_candidates, article.id,
+                    article.published_at, article.source,
+                )
         result = {"fetched": fetched, "created": created, "skipped": skipped,
                   "archive_only": archive_only, "feed_windows": actual_queries,
                   "archive_day": state.archive_day or None}
         state.latest_success_at = datetime.now(timezone.utc)
         state.last_result = result
         session.commit()
+        pending_sentiment = [
+            article.id for article in pending_articles
+            if not archive_only and (
+                (article.usefulness or {}).get("label") == "useful" or article.ticker_candidates
+            )
+        ]
+        queued_sentiment = enqueue_sentiment(pending_sentiment)
+        result["sentiment_queued"] = queued_sentiment
         logger.info("News ingestion persisted fetched=%d created=%d skipped=%d archive_day=%s", fetched, created, skipped, state.archive_day or None)
         return result
     except Exception as exc:
@@ -684,12 +865,38 @@ def backfill_missing_impacts(session: Session, limit: int = 10) -> int:
         NewsArticle.published_at.desc(), NewsArticle.ingested_at.desc()
     )
     completed = 0
+    changed = False
+    sentiment_ids: list[int] = []
     with session.no_autoflush:
         for article in session.scalars(query):
-            if not article.usefulness or article.usefulness.get("ticker_inference") != "stocky-sp500-v1":
+            if (
+                article.sentiment_status == "not_processed"
+                and ((article.usefulness or {}).get("label") == "useful" or article.ticker_candidates)
+            ):
+                sentiment_ids.append(article.id)
+            if (
+                not article.financial_events
+                and ((article.usefulness or {}).get("label") == "useful" or article.ticker_candidates)
+            ):
+                article.financial_events = extract_financial_events(
+                    article.title, article.ticker_candidates, article.id,
+                    article.published_at, article.source,
+                )
+                changed = changed or bool(article.financial_events)
+            if not article.usefulness or article.usefulness.get("ticker_inference") not in {
+                "stocky-sp500-v1", "explicit-name-fallback-v1",
+            }:
                 analysis = analyze_headline(article.title, article.summary)
                 article.ticker_candidates = analysis["ticker_candidates"]
                 article.usefulness = analysis["usefulness"]
+                if article.usefulness.get("label") == "useful" or article.ticker_candidates:
+                    article.financial_events = extract_financial_events(
+                        article.title, article.ticker_candidates, article.id,
+                        article.published_at, article.source,
+                    )
+                    if article.sentiment_status == "not_processed":
+                        sentiment_ids.append(article.id)
+                changed = True
                 logger.info("Legacy story Stocky candidates refreshed article_id=%s count=%d", article.id, len(article.ticker_candidates))
                 # Empty retrieval is still a completed model step. The marker
                 # prevents expensive full-universe inference every poll.
@@ -721,6 +928,7 @@ def backfill_missing_impacts(session: Session, limit: int = 10) -> int:
             logger.info("Legacy story impact backfilled article_id=%s ticker_count=%d", article.id, len(article.impact_predictions))
             if completed >= max(1, limit):
                 break
-    if completed:
+    if completed or changed:
         session.commit()
+    enqueue_sentiment(list(dict.fromkeys(sentiment_ids)))
     return completed

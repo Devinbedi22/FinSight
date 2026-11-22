@@ -23,17 +23,17 @@ import {
 } from "recharts";
 import { Panel, PanelHeading, StatusBadge } from "@/components/ui";
 
-const axisStyle = { fill: "#7d8995", fontSize: 10 };
-const gridColor = "#252d36";
+const axisStyle = { fill: "var(--subtle)", fontSize: 10 };
+const gridColor = "var(--line-soft)";
 const tooltipStyle = {
-  background: "#141a21",
-  border: "1px solid #303a45",
+  background: "var(--panel-raised)",
+  border: "1px solid var(--line)",
   borderRadius: 8,
-  color: "#dce2e8",
+  color: "var(--text)",
   fontSize: 11,
 };
 
-export type ForecastPoint = { date: string; close: number };
+export type ForecastPoint = { date: string; close: number; open?: number | null; high?: number | null; low?: number | null; volume?: number | null };
 export type NewsMarker = { id: number; title: string; published_at: string };
 export type EvidenceCandidate = {
   ticker: string;
@@ -58,10 +58,10 @@ function ChartStatus({
   hasData: boolean;
 }) {
   if (loading && !hasData) {
-    return <p className="p-6 text-xs text-[#89939f]" role="status">Loading live article data…</p>;
+    return <p className="p-6 text-xs text-[var(--muted)]" role="status">Loading live article data…</p>;
   }
   if (error && !hasData) {
-    return <p className="p-6 text-xs text-rose-300">Live article data is unavailable. {error}</p>;
+    return <p className="p-6 text-xs text-negative">Live article data is unavailable. {error}</p>;
   }
   return null;
 }
@@ -102,10 +102,10 @@ export function NewsVolumeChart({
         detail={detail}
         action={error ? <StatusBadge tone="amber">Refresh failed</StatusBadge> : undefined}
       />
-      {error && hasData && <p className="px-5 pt-3 text-[10px] text-amber-300">Showing previously fetched live data; the latest refresh failed.</p>}
+      {error && hasData && <p className="px-5 pt-3 text-[10px] text-warning">Showing previously fetched live data; the latest refresh failed.</p>}
       <ChartStatus loading={loading} error={error} hasData={hasData} />
       {!loading && !error && !hasData && (
-        <p className="p-6 text-xs text-[#89939f]">No dated articles are available in the loaded API sample.</p>
+        <p className="p-6 text-xs text-[var(--muted)]">No dated articles are available in the loaded API sample.</p>
       )}
       {hasData && <div className="h-60 p-3 sm:h-64 sm:p-4">
         <ResponsiveContainer width="100%" height="100%">
@@ -118,7 +118,7 @@ export function NewsVolumeChart({
               tick={axisStyle}
               minTickGap={28}
               tickFormatter={(date: string) => date.slice(5)}
-              label={{ value: "Publication date", position: "insideBottom", offset: -12, fill: "#7d8995", fontSize: 10 }}
+              label={{ value: "Publication date", position: "insideBottom", offset: -12, fill: "var(--subtle)", fontSize: 10 }}
             />
             <YAxis
               allowDecimals={false}
@@ -126,14 +126,14 @@ export function NewsVolumeChart({
               axisLine={false}
               tick={axisStyle}
               width={30}
-              label={{ value: "Articles", angle: -90, position: "insideLeft", fill: "#7d8995", fontSize: 10 }}
+              label={{ value: "Articles", angle: -90, position: "insideLeft", fill: "var(--subtle)", fontSize: 10 }}
             />
             <Tooltip
               contentStyle={tooltipStyle}
               labelFormatter={(date) => `Published ${date}`}
               formatter={(value) => [value, "Articles"]}
             />
-            <Bar dataKey="count" name="Articles" fill="#91aaff" radius={[4, 4, 0, 0]} maxBarSize={32} />
+            <Bar dataKey="count" name="Articles" fill="var(--accent-strong)" radius={[4, 4, 0, 0]} maxBarSize={32} />
           </BarChart>
         </ResponsiveContainer>
       </div>}
@@ -142,9 +142,9 @@ export function NewsVolumeChart({
 }
 
 const sentimentColors: Record<string, string> = {
-  positive: "#39c9a0",
-  neutral: "#91aaff",
-  negative: "#fb7185",
+  positive: "var(--positive)",
+  neutral: "var(--accent-strong)",
+  negative: "var(--negative)",
 };
 
 export function SentimentDistributionChart({
@@ -178,10 +178,10 @@ export function SentimentDistributionChart({
         detail={`${classifiedCount} classified of ${articles.length} loaded articles · API sentiment labels`}
         action={error ? <StatusBadge tone="amber">Refresh failed</StatusBadge> : undefined}
       />
-      {error && articles.length > 0 && <p className="px-5 pt-3 text-[10px] text-amber-300">Showing previously fetched live data; the latest refresh failed.</p>}
+      {error && articles.length > 0 && <p className="px-5 pt-3 text-[10px] text-warning">Showing previously fetched live data; the latest refresh failed.</p>}
       <ChartStatus loading={loading} error={error} hasData={hasData} />
       {!loading && !error && !hasData && (
-        <p className="p-6 text-xs leading-5 text-[#89939f]">
+        <p className="p-6 text-xs leading-5 text-[var(--muted)]">
           No sentiment labels are present in the loaded API articles. The backend currently leaves article sentiment unclassified; no sample values are substituted.
         </p>
       )}
@@ -207,7 +207,7 @@ export function SentimentDistributionChart({
             </PieChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 px-4 pb-4 text-[10px] text-[#89939f]">
+        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 px-4 pb-4 text-[10px] text-[var(--muted)]">
           {counts.map((item) => (
             <span key={item.label} className="flex items-center gap-1.5">
               <i className="h-2 w-2 rounded-full" style={{ backgroundColor: sentimentColors[item.label] }} />
@@ -259,28 +259,28 @@ export function EventIntelligenceRadar({
 
   if (data.length < 2) {
     return (
-      <div className="rounded-lg border border-[#29323c] bg-[#0d1218] px-4 py-3 text-[10px] leading-5 text-[#89939f]">
-        <p className="font-medium text-[#cbd4de]">Event Intelligence Radar unavailable</p>
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-soft)] px-4 py-3 text-[10px] leading-5 text-[var(--muted)]">
+        <p className="font-medium text-[var(--muted)]">Event Intelligence Radar unavailable</p>
         <p>At least two numeric analysis/evidence fields are needed. Missing dimensions are not estimated.</p>
       </div>
     );
   }
 
   return (
-    <section className="my-3 rounded-lg border border-[#29323c] bg-[#0d1218] p-3" aria-label="Event intelligence evidence radar">
+    <section className="my-3 rounded-lg border border-[var(--line)] bg-[var(--panel-soft)] p-3" aria-label="Event intelligence evidence radar">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-[11px] font-semibold text-[#dce2e8]">Event Intelligence Radar</h3>
-          <p className="mt-1 text-[9px] text-[#89939f]">Stored analysis evidence · not event severity or a future-return prediction</p>
+          <h3 className="text-[11px] font-semibold text-[var(--text)]">Event Intelligence Radar</h3>
+          <p className="mt-1 text-[9px] text-[var(--muted)]">Stored analysis evidence · not event severity or a future-return prediction</p>
         </div>
         {candidates.length > 1 && (
-          <label className="text-[9px] text-[#89939f]">
+          <label className="text-[9px] text-[var(--muted)]">
             Issuer{" "}
             <select
               aria-label="Radar issuer"
               value={selected?.ticker ?? ""}
               onChange={(event) => setSelectedTicker(event.target.value)}
-              className="rounded border border-[#303a45] bg-[#141a21] px-2 py-1 text-[10px] text-[#dce2e8]"
+              className="rounded border border-[var(--line)] bg-[var(--panel-raised)] px-2 py-1 text-[10px] text-[var(--text)]"
             >
               {candidates.map((candidate) => (
                 <option key={candidate.ticker} value={candidate.ticker}>{candidate.ticker}</option>
@@ -293,13 +293,13 @@ export function EventIntelligenceRadar({
         <ResponsiveContainer width="100%" height="100%">
           <RadarChart data={data} outerRadius="68%">
             <PolarGrid stroke={gridColor} />
-            <PolarAngleAxis dataKey="dimension" tick={{ fill: "#a5afba", fontSize: 9 }} />
-            <PolarRadiusAxis angle={30} domain={[0, 10]} ticks={[0, 5, 10]} tick={{ fill: "#74808c", fontSize: 8 }} />
+            <PolarAngleAxis dataKey="dimension" tick={{ fill: "var(--muted)", fontSize: 9 }} />
+            <PolarRadiusAxis angle={30} domain={[0, 10]} ticks={[0, 5, 10]} tick={{ fill: "var(--subtle)", fontSize: 8 }} />
             <Radar
               name="Stored evidence"
               dataKey="value"
-              stroke="#91aaff"
-              fill="#91aaff"
+              stroke="var(--accent-strong)"
+              fill="var(--accent-strong)"
               fillOpacity={0.28}
               isAnimationActive={false}
             />
@@ -313,7 +313,7 @@ export function EventIntelligenceRadar({
           </RadarChart>
         </ResponsiveContainer>
       </div>
-      <p className="px-1 text-[9px] leading-4 text-[#74808c]">
+      <p className="px-1 text-[9px] leading-4 text-[var(--subtle)]">
         Display scale 0–10. Stocky’s 0–1 score is scaled ×10; issuer-mentioned is binary (0 or 10). Values are article fields, not comparable calibrated probabilities.
       </p>
     </section>
@@ -396,7 +396,7 @@ export function PricePredictionChart({
                 axisLine={false}
                 tick={axisStyle}
                 tickFormatter={(value: number) => formatDate(value)}
-                label={{ value: "Trading date", position: "insideBottom", offset: -8, fill: "#7d8995", fontSize: 10 }}
+                label={{ value: "Trading date", position: "insideBottom", offset: -8, fill: "var(--subtle)", fontSize: 10 }}
               />
               <YAxis
                 tickLine={false}
@@ -405,7 +405,7 @@ export function PricePredictionChart({
                 width={66}
                 domain={["auto", "auto"]}
                 tickFormatter={(value: number) => money.format(value)}
-                label={{ value: "Adjusted close (USD)", angle: -90, position: "insideLeft", fill: "#7d8995", fontSize: 10 }}
+                label={{ value: "Adjusted close (USD)", angle: -90, position: "insideLeft", fill: "var(--subtle)", fontSize: 10 }}
               />
               <Tooltip
                 contentStyle={tooltipStyle}
@@ -423,7 +423,7 @@ export function PricePredictionChart({
                 type="monotone"
                 dataKey="actual"
                 name="Observed adjusted close"
-                stroke="#91aaff"
+                stroke="var(--accent-strong)"
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}
@@ -435,7 +435,7 @@ export function PricePredictionChart({
                   name="News publication"
                   data={newsPoints}
                   dataKey="y"
-                  fill="#fbbf24"
+                  fill="var(--warning)"
                   shape="triangle"
                   isAnimationActive={false}
                 />
@@ -445,7 +445,7 @@ export function PricePredictionChart({
                   name="30-day forecast point"
                   data={forecastPoint}
                   dataKey="y"
-                  fill="#39c9a0"
+                  fill="var(--positive)"
                   shape="diamond"
                   isAnimationActive={false}
                 />
@@ -453,15 +453,54 @@ export function PricePredictionChart({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 pb-4 text-[10px] text-[#89939f]">
-          <span className="flex items-center gap-2"><i className="h-0.5 w-4 bg-[#91aaff]" />Observed close</span>
-          {newsArticleCount > 0 && <span className="flex items-center gap-2"><i className="h-2 w-2 rotate-45 bg-amber-300" />News published · {newsArticleCount}</span>}
-          {forecast && <><span className="flex items-center gap-2"><i className="h-2 w-2 rotate-45 bg-[#39c9a0]" />30-day forecast point only</span><span className="tabular-nums">Model return: {forecast.expectedReturn >= 0 ? "+" : ""}{(forecast.expectedReturn * 100).toFixed(2)}%</span></>}
-          <p className="basis-full text-[9px] leading-4 text-[#74808c]">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 pb-4 text-[10px] text-[var(--muted)]">
+          <span className="flex items-center gap-2"><i className="h-0.5 w-4 bg-[var(--accent-strong)]" />Observed close</span>
+          {newsArticleCount > 0 && <span className="flex items-center gap-2"><i className="h-2 w-2 rotate-45 bg-warning" />News published · {newsArticleCount}</span>}
+          {forecast && <><span className="flex items-center gap-2"><i className="h-2 w-2 rotate-45 bg-[var(--positive)]" />30-day forecast point only</span><span className="tabular-nums">Model return: {forecast.expectedReturn >= 0 ? "+" : ""}{(forecast.expectedReturn * 100).toFixed(2)}%</span></>}
+          <p className="basis-full text-[9px] leading-4 text-[var(--subtle)]">
             News markers indicate publication dates and are anchored to the next available daily close for display; they do not represent measured market reactions. {newsArticleCount === 0 ? "No selected articles fall within this displayed price history." : ""}
           </p>
         </div>
-      </> : <p className="p-6 text-sm text-[#89939f]">No price history is available for this company.</p>}
+      </> : <p className="p-6 text-sm text-[var(--muted)]">No price history is available for this company.</p>}
+    </Panel>
+  );
+}
+
+export function CompanyPriceChart({
+  history,
+  period,
+  onPeriodChange,
+  source,
+  loading,
+  error,
+}: {
+  history: ForecastPoint[];
+  period: string;
+  onPeriodChange: (period: string) => void;
+  source: string;
+  loading: boolean;
+  error: string;
+}) {
+  const periods = ["1mo", "3mo", "6mo", "1y", "5y", "max"];
+  return (
+    <Panel>
+      <div className="flex flex-col gap-3 border-b border-[var(--line-soft)] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-[var(--text)]">Historical price and volume</h2>
+          <p className="mt-1 break-words text-xs leading-5 text-[var(--muted)]">{source || "Adjusted daily OHLCV from Yahoo Finance through yfinance"}</p>
+        </div>
+        <div className="grid w-full grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-wrap sm:justify-end" role="group" aria-label="Price history range">
+          {periods.map((value) => <button key={value} type="button" aria-pressed={period === value} onClick={() => onPeriodChange(value)} className={`min-h-10 rounded-lg border px-3 py-2 text-[10px] font-semibold transition-colors focus-ring ${period === value ? "border-accent/50 bg-accent/20 text-accent-strong" : "border-transparent text-muted hover:bg-panel-raised hover:text-text"}`}>{value.toUpperCase()}</button>)}
+        </div>
+      </div>
+      {loading ? <div className="p-7 text-xs text-[var(--muted)]" role="status">Loading {period} of daily prices and volume…</div>
+        : error ? <div className="p-7 text-xs text-negative" role="status">{error}</div>
+          : history.length === 0 ? <div className="p-7 text-xs text-[var(--muted)]">No price history is available for this company and period.</div>
+            : <>
+              <div className="h-[280px] p-3 sm:h-[350px] sm:p-4"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={history} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}><CartesianGrid vertical={false} stroke={gridColor} /><XAxis dataKey="date" tickLine={false} axisLine={false} tick={axisStyle} minTickGap={35} tickFormatter={(value: string) => value.slice(0, 7)} /><YAxis tickLine={false} axisLine={false} tick={axisStyle} width={68} domain={["auto", "auto"]} tickFormatter={(value: number) => `$${value.toFixed(0)}`} /><Tooltip contentStyle={tooltipStyle} labelFormatter={(value) => String(value)} formatter={(value) => [`$${Number(value).toFixed(2)}`, "Adjusted close"]} /><Line type="monotone" dataKey="close" name="Adjusted close" stroke="var(--accent-strong)" strokeWidth={2} dot={false} activeDot={{ r: 3 }} isAnimationActive={false} /></ComposedChart></ResponsiveContainer></div>
+              {history.some((point) => point.volume != null) && <div className="h-[100px] border-t border-[var(--line-soft)] px-3 py-2 sm:h-[120px]"><ResponsiveContainer width="100%" height="100%"><BarChart data={history} margin={{ top: 4, right: 12, bottom: 0, left: 4 }}><XAxis dataKey="date" hide /><YAxis tickLine={false} axisLine={false} tick={axisStyle} width={68} tickFormatter={(value: number) => new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value)} /><Tooltip contentStyle={tooltipStyle} labelFormatter={(value) => String(value)} formatter={(value) => [new Intl.NumberFormat().format(Number(value)), "Volume"]} /><Bar dataKey="volume" name="Volume" fill="var(--accent-strong)" maxBarSize={10} isAnimationActive={false} /></BarChart></ResponsiveContainer></div>}
+              <p className="px-5 pb-4 text-[10px] text-[var(--subtle)]">Prices are adjusted daily bars; the selected range is {period.toUpperCase()}. Volume is reported shares traded per session.</p>
+            </>}
     </Panel>
   );
 }
