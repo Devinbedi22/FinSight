@@ -1,66 +1,152 @@
-# FinSight — financial-news inference POC
+# FinSight — Financial Intelligence & Stock Market Research
 
-This repository contains a runnable news pipeline and an S&P 500 research frontend. It uses pretrained, non-generative models:
+FinSight is an AI-assisted financial research platform that integrates stock market data, financial news, sentiment analysis, company fundamentals, technical indicators, and experimental machine learning forecasts into a unified research workspace.
 
-- `stocky-ai/stock-predictor-scratch` retrieves candidate symbols from Nasdaq Trader's current active, non-test, non-ETF listings.
-- `techandy42/FinancialBERT` Model v2 applies the FinBERT encoder and released regression head to the top five recent stored headlines retrieved for one company, producing a next-month expected return.
+## Key Features
 
-The forecast page plots observed daily adjusted closes and a single 30-day model forecast point. It is experimental, not a calibrated path, causal estimate, or investment recommendation.
+- **Market Overview:** Explore market performance and available company quotes.
+- **Company Research:** Analyze historical stock prices, financial statements, and technical indicators.
+- **Financial News:** Retrieve and organize financial news with company-level relevance and sentiment analysis.
+- **Stock Comparison:** Compare historical performance and financial fundamentals of up to four companies.
+- **Watchlist:** Maintain a personalized, browser-local list of companies.
+- **Event Intelligence:** Explore heuristic financial event signals extracted from stored news headlines.
+- **Research Assistant:** Ask financial research questions and receive evidence-grounded findings with source citations.
+- **LLM Integration:** Optional conversational interpretation through an OpenAI-compatible provider.
+- **Stock Predictions:** Explore experimental FinancialBERT-based forecasts.
+- **Backtesting:** Evaluate forecasting methodologies using historical market data.
 
-## What runs
+## Technology Stack
 
-- The Companies view covers S&P 500 constituents and retrieves actual adjusted daily prices.
-- Google News RSS ingestion runs automatically every 15 minutes while the backend is running; articles are deduplicated by URL and persisted.
-- The News view is a single newest-first infinite feed. Older stories load as the user scrolls; no manual ingestion button or separate Events page is needed.
-- Each S&P 500 company page retrieves the best-ranked recent stored headlines, runs FinancialBERT Model v2 regression on the combined headline text, and plots the expected 30-day point beside actual price history.
+| Component | Technology |
+|---|---|
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Backend | Python, FastAPI |
+| Database | SQLite, PostgreSQL |
+| ORM | SQLAlchemy |
+| Database Migrations | Alembic |
+| Market Data | Yahoo Finance |
+| Financial Fundamentals | SEC EDGAR |
+| News Source | Google News RSS |
+| NLP Models | FinBERT, Stocky, FinancialBERT |
+| Machine Learning | PyTorch, Transformers, Scikit-learn |
+| Version Control | Git, GitHub, Git LFS |
 
-## Run locally (Bash)
+## System Architecture
 
-Requires Python 3.11+, Node.js 20.9+, and internet access. PostgreSQL/Docker is optional for the POC; SQLite works locally. From the repository root:
+FinSight follows a modular architecture comprising:
+
+1. A Next.js frontend for interactive financial research and visualization.
+2. A FastAPI backend for API requests and financial data processing.
+3. External providers for market prices, financial statements, and news.
+4. Machine learning models for sentiment, company relevance, and experimental forecasting.
+5. A persistence layer for storing news and related research data.
+
+## User Interface
+
+FinSight uses a custom Smoky Amethyst design system featuring muted purple surfaces, refined typography, consistent visual components, responsive layouts, and financial data visualizations.
+
+## Local Development
+
+### Prerequisites
+
+- Python 3.11 or later
+- Node.js 20.9 or later
+- Git and Git LFS
+- Internet connectivity for external data providers
+- Required machine learning model artifacts
+
+### Clone the repository
 
 ```bash
-python -m pip install -e 'backend[dev]'
-mkdir -p backend/app/ml/artifacts/financialbert
-curl -L 'https://drive.google.com/uc?export=download&id=1g-HDbEMdaMrWHFKxjE7UmLu_Tf8kwhqB' \
-  -o backend/app/ml/artifacts/financialbert/model_regressor_weight_v2.pth
+git clone https://github.com/Devinbedi22/FinSight.git
+cd FinSight
 ```
 
-Run the backend in one terminal (from the repository root):
+### Backend setup
+
+From the repository root:
 
 ```bash
+python -m pip install -e "backend[dev]"
 cd backend
-DATABASE_URL=sqlite:///./finsight.db alembic upgrade head
-DATABASE_URL=sqlite:///./finsight.db NEWS_INGEST_ENABLED=false python -m uvicorn app.main:app --reload
 ```
 
-Run the frontend in a second terminal:
+Configure the required environment variables using `.env.example` as a reference.
+
+For a local SQLite setup:
+
+```bash
+export DATABASE_URL=sqlite:///./finsight.db
+export NEWS_INGEST_ENABLED=false
+alembic upgrade head
+python -m uvicorn app.main:app --reload
+```
+
+On Windows PowerShell, use `$env:DATABASE_URL` and `$env:NEWS_INGEST_ENABLED` instead of the Bash export commands.
+
+### Frontend setup
+
+Open a separate terminal from the repository root:
 
 ```bash
 cd frontend
 npm ci
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1 npm run dev
+npm run dev
 ```
 
-Open <http://localhost:3000>; backend docs are at <http://localhost:8000/docs>. The first Stocky use downloads Hugging Face weights; Stocky is approximately 1.36 GB. The FinancialBERT regression checkpoint must be present at the configured path. For PostgreSQL, set the appropriate `DATABASE_URL` and start the Compose database separately. Background polling can be disabled with `NEWS_INGEST_ENABLED=false`.
+Configure the frontend API base URL as:
 
-## API
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+```
 
-- `GET /health`
-- `GET /api/v1/universe/us-listed` (add `?refresh=true` to refetch)
-- `GET /api/v1/universe/sp500` (legacy comparison endpoint)
-- `POST /api/v1/analyze` — body: `{"headline":"...", "summary":"..."}`
-- `GET /api/v1/news?limit=30&offset=0&ticker=NVDA`
-- `GET /api/v1/news/{id}` — persisted article with ticker-level impact classes
-- `GET /api/v1/companies?search=Apple&limit=50&offset=0` — server-filtered S&P 500 company search and page
-- `GET /api/v1/companies/{ticker}/history?period=1y` — daily adjusted OHLCV for `1mo`, `3mo`, `6mo`, `1y`, `5y`, or `max`
-- `GET /api/v1/companies/{ticker}/fundamentals?as_of=YYYY-MM-DD` — SEC CompanyFacts filtered to facts available by the requested date, with per-metric filing periods and provenance
-- `GET /api/v1/companies/{ticker}/prediction` — observed daily closes, retrieved recent headlines, and FinancialBERT expected return/forecast price
-- `POST /api/v1/news/ingest` — body: `{"limit":25}`
+### Access the application
 
-## Fundamentals and data limitations
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API documentation: http://localhost:8000/docs
 
-Company financial statements are read from the free SEC EDGAR CompanyFacts API. Set `SEC_USER_AGENT` in `backend/.env` to an application name and a monitored contact email before requesting fundamentals; replace the example value in `.env.example`. SEC facts reflect reported filings and may omit or use company-specific tags for some metrics. Unavailable metrics remain empty. Revenue, EPS, cash flow, and other values include their reported period and filing date. P/E and market capitalization are calculated only when both SEC facts and a latest available Yahoo Finance daily price are present. Yahoo Finance access through yfinance is unofficial, can fail or be rate limited, and is intended for personal use under yfinance's published guidance; it is not real-time market data.
+## Configuration
 
-## Research limitations
+SEC fundamentals require a valid `SEC_USER_AGENT` containing an application identifier and monitored contact email.
 
-This is a model integration POC, not evidence of a trading edge. FinancialBERT's upstream notebook uses a random split and selects epochs using test loss, so its evaluation is not a strict out-of-time validation. This app approximates the upstream retrieval flow using Stocky-ranked stored news rather than Bing plus Cohere. The predicted return is a single experimental point forecast. News comes from one Google News RSS query. Prices are delayed adjusted daily closes via yfinance, not real-time data.
+The optional LLM integration requires a compatible provider configuration. See [LLM Configuration](docs/research-llm.md) for details.
+
+Keep credentials and environment files outside version control.
+
+Some machine learning features require separately available model checkpoints. Refer to the existing model setup documentation before running inference.
+
+## Testing
+
+Backend:
+
+```bash
+cd backend
+python -m pytest
+```
+
+Frontend:
+
+```bash
+cd frontend
+npx tsc --noEmit
+npm run build
+```
+
+## Current Limitations
+
+- Market prices are delayed daily observations rather than real-time exchange data.
+- External financial data requires successful network access.
+- The emergency company-directory fallback provides limited historical coverage.
+- Event classifications are heuristic and are not human-verified.
+- Experimental forecasts have not demonstrated reliable predictive superiority over baseline models.
+- LLM functionality requires a configured provider and remains optional.
+- Watchlists are stored locally in the browser.
+
+## Disclaimer
+
+FinSight is an educational and research-oriented project. Its forecasts, sentiment classifications, and financial interpretations are not investment recommendations.
+
+## License
+
+This project is licensed under the MIT License.
